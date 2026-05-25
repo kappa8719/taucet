@@ -9,7 +9,19 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const dep_zglfw = b.dependency("zglfw", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const dep_zmath = b.dependency("zmath", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const zgpu_mod = dep_zgpu.module("root");
+    const zglfw_mod = dep_zglfw.module("root");
+    const zmath_mod = dep_zmath.module("root");
 
     const engine_mod = b.createModule(.{
         .root_source_file = b.path("src/engine/mod.zig"),
@@ -17,6 +29,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "zgpu", .module = zgpu_mod },
+            .{ .name = "zglfw", .module = zglfw_mod },
+            .{ .name = "zmath", .module = zmath_mod },
         },
     });
 
@@ -26,6 +40,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "engine", .module = engine_mod },
+            .{ .name = "zgpu", .module = zgpu_mod },
+            .{ .name = "zmath", .module = zmath_mod },
         },
     });
 
@@ -47,6 +63,10 @@ pub fn build(b: *std.Build) void {
     @import("zgpu").addLibraryPathsTo(exe);
     exe.root_module.linkLibrary(dep_zgpu.artifact("zdawn"));
 
+    if (target.result.os.tag != .emscripten) {
+        exe.root_module.linkLibrary(dep_zglfw.artifact("glfw"));
+    }
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
@@ -59,4 +79,3 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run taucet");
     run_step.dependOn(&run_cmd.step);
 }
-
