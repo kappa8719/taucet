@@ -6,8 +6,8 @@ pub fn run(comptime Game: type, io: std.Io, allocator: std.mem.Allocator) !void 
     std.log.info("initializing engine", .{});
 
     comptime {
-        if (!@hasDecl(Game, "init")) @compileError("Game must have init(Allocator) !Game");
-        if (!@hasDecl(Game, "deinit")) @compileError("Game must have deinit()");
+        if (!@hasDecl(Game, "init")) @compileError("Game must have init(Allocator, *Renderer) !Game");
+        if (!@hasDecl(Game, "deinit")) @compileError("Game must have deinit(*Renderer)");
         if (!@hasDecl(Game, "update")) @compileError("Game must have update(f32) void");
         if (!@hasDecl(Game, "render")) @compileError("Game must have render(*FrameContext) void");
     }
@@ -27,8 +27,8 @@ pub fn run(comptime Game: type, io: std.Io, allocator: std.mem.Allocator) !void 
     defer renderer.deinit();
 
     std.log.info("initializing game", .{});
-    var game = try Game.init(allocator);
-    defer game.deinit();
+    var game = try Game.init(allocator, &renderer);
+    defer game.deinit(&renderer);
 
     // Capture the starting monotonic timestamp using the provided io instance
     var last_time = std.Io.Clock.awake.now(io);
@@ -36,6 +36,7 @@ pub fn run(comptime Game: type, io: std.Io, allocator: std.mem.Allocator) !void 
     std.log.info("starting", .{});
     while (!window.shouldClose()) {
         zglfw.pollEvents();
+        if (window.shouldClose()) break;
 
         // Calculate delta time
         const now = std.Io.Clock.awake.now(io);
@@ -49,6 +50,6 @@ pub fn run(comptime Game: type, io: std.Io, allocator: std.mem.Allocator) !void 
 
         var frame = renderer.beginFrame();
         game.render(&frame);
-        renderer.endFrame();
+        if (!renderer.endFrame()) break;
     }
 }
