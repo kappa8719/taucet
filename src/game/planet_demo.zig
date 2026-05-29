@@ -108,8 +108,8 @@ fn createLowPolyPlanetMesh(allocator: std.mem.Allocator, renderer: *engine.Rende
             const p10 = spherePoint(theta1, phi0);
             const p11 = spherePoint(theta1, phi1);
 
-            if (lat != 0) try appendTriangle(allocator, &vertices, &indices, p00, p10, p01);
-            if (lat + 1 != rings) try appendTriangle(allocator, &vertices, &indices, p01, p10, p11);
+            if (lat != 0) try appendTriangle(allocator, &vertices, &indices, p00, p01, p10);
+            if (lat + 1 != rings) try appendTriangle(allocator, &vertices, &indices, p01, p11, p10);
         }
     }
 
