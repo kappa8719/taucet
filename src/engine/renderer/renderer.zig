@@ -479,8 +479,8 @@ const mesh_shader_wgsl =
     \\@vertex
     \\fn vs_main(input: VertexIn) -> VertexOut {
     \\    var out: VertexOut;
-    \\    out.position = vec4<f32>(input.position, 1.0) * draw.mvp;
-    \\    out.normal = normalize((vec4<f32>(input.normal, 0.0) * draw.model).xyz);
+    \\    out.position = draw.mvp * vec4<f32>(input.position, 1.0);
+    \\    out.normal = normalize((draw.model * vec4<f32>(input.normal, 0.0)).xyz);
     \\    out.color = input.color;
     \\    return out;
     \\}
