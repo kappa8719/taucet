@@ -8,19 +8,16 @@ pub const PlanetDemo = struct {
 
     planet_center: engine.WorldPosition,
     planet_radius: f64,
-    orbit_angle: f32 = 0.0,
-    orbit_distance: f64 = 7.0,
-    orbit_height: f64 = 2.0,
 
     planet_mesh: engine.MeshHandle,
 
     pub fn init(allocator: std.mem.Allocator, renderer: *engine.Renderer) !PlanetDemo {
         const planet_mesh = try createLowPolyPlanetMesh(allocator, renderer);
 
-        return .{
+        var demo = PlanetDemo{
             .allocator = allocator,
             .camera = .{
-                .world_origin = .{ .x = 0, .y = 2.0, .z = 7.0 },
+                .world_origin = initialCameraPosition(),
                 .near = 0.05,
                 .far = 100.0,
             },
@@ -28,28 +25,23 @@ pub const PlanetDemo = struct {
             .planet_radius = 2.0,
             .planet_mesh = planet_mesh,
         };
+        demo.lookAtPlanet();
+        return demo;
     }
 
     pub fn deinit(self: *PlanetDemo, renderer: *engine.Renderer) void {
         renderer.destroyMesh(self.planet_mesh);
     }
 
-    pub fn update(self: *PlanetDemo, dt: f32) void {
-        self.orbit_angle += dt * 0.35;
+    pub fn update(self: *PlanetDemo, dt: f32, input: engine.InputState) void {
+        if (input.reset_camera) {
+            self.camera.world_origin = initialCameraPosition();
+            self.lookAtPlanet();
+            return;
+        }
 
-        self.camera.world_origin = .{
-            .x = @as(f64, @floatCast(@sin(self.orbit_angle))) * self.orbit_distance,
-            .y = self.orbit_height,
-            .z = @as(f64, @floatCast(@cos(self.orbit_angle))) * self.orbit_distance,
-        };
-
-        const to_planet = self.planet_center.sub(self.camera.world_origin);
-        const dx = to_planet.x;
-        const dy = to_planet.y;
-        const dz = to_planet.z;
-        const len = @sqrt(dx * dx + dy * dy + dz * dz);
-        self.camera.yaw = std.math.atan2(dx, -dz);
-        self.camera.pitch = std.math.asin(dy / len);
+        self.updateLook(dt, input);
+        self.updateMovement(dt, input);
     }
 
     pub fn render(self: *PlanetDemo, frame: *engine.FrameContext) void {
@@ -79,7 +71,69 @@ pub const PlanetDemo = struct {
             .transform = model,
         });
     }
+
+    fn updateLook(self: *PlanetDemo, dt: f32, input: engine.InputState) void {
+        const key_look_speed = 1.8;
+        const mouse_sensitivity = 0.003;
+
+        if (input.look_left) self.camera.yaw -= key_look_speed * dt;
+        if (input.look_right) self.camera.yaw += key_look_speed * dt;
+        if (input.look_up) self.camera.pitch += key_look_speed * dt;
+        if (input.look_down) self.camera.pitch -= key_look_speed * dt;
+
+        self.camera.yaw += input.look_delta_x * mouse_sensitivity;
+        self.camera.pitch -= input.look_delta_y * mouse_sensitivity;
+        self.camera.pitch = std.math.clamp(self.camera.pitch, -1.5, 1.5);
+    }
+
+    fn updateMovement(self: *PlanetDemo, dt: f32, input: engine.InputState) void {
+        var local_x: f32 = 0.0;
+        var local_y: f32 = 0.0;
+        var local_z: f32 = 0.0;
+
+        if (input.move_forward) local_z += 1.0;
+        if (input.move_backward) local_z -= 1.0;
+        if (input.move_right) local_x += 1.0;
+        if (input.move_left) local_x -= 1.0;
+        if (input.move_up) local_y += 1.0;
+        if (input.move_down) local_y -= 1.0;
+
+        const magnitude = @sqrt(local_x * local_x + local_y * local_y + local_z * local_z);
+        if (magnitude == 0.0) return;
+
+        local_x /= magnitude;
+        local_y /= magnitude;
+        local_z /= magnitude;
+
+        const cy = @cos(self.camera.yaw);
+        const sy = @sin(self.camera.yaw);
+        const cp = @cos(self.camera.pitch);
+        const sp = @sin(self.camera.pitch);
+
+        const forward = .{ sy * cp, sp, -cy * cp };
+        const right = .{ cy, 0.0, sy };
+        const speed: f64 = if (input.fast) 18.0 else 4.0;
+        const step = speed * @as(f64, @floatCast(dt));
+
+        self.camera.world_origin.x += @as(f64, @floatCast((right[0] * local_x) + (forward[0] * local_z))) * step;
+        self.camera.world_origin.y += @as(f64, @floatCast(local_y + (forward[1] * local_z))) * step;
+        self.camera.world_origin.z += @as(f64, @floatCast((right[2] * local_x) + (forward[2] * local_z))) * step;
+    }
+
+    fn lookAtPlanet(self: *PlanetDemo) void {
+        const to_planet = self.planet_center.sub(self.camera.world_origin);
+        const dx = to_planet.x;
+        const dy = to_planet.y;
+        const dz = to_planet.z;
+        const len = @sqrt(dx * dx + dy * dy + dz * dz);
+        self.camera.yaw = std.math.atan2(dx, -dz);
+        self.camera.pitch = std.math.asin(dy / len);
+    }
 };
+
+fn initialCameraPosition() engine.WorldPosition {
+    return .{ .x = 0, .y = 2.0, .z = 8.0 };
+}
 
 fn createLowPolyPlanetMesh(allocator: std.mem.Allocator, renderer: *engine.Renderer) !engine.MeshHandle {
     var vertices: std.ArrayListUnmanaged(engine.Vertex) = .empty;

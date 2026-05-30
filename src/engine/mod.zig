@@ -1,5 +1,6 @@
 pub const App = @import("app.zig");
 pub const Camera = @import("camera.zig").Camera;
+pub const InputState = @import("input.zig").InputState;
 pub const WorldPosition = @import("world.zig").WorldPosition;
 pub const RelativePosition = @import("world.zig").RelativePosition;
 
