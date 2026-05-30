@@ -180,7 +180,7 @@ pub const Renderer = struct {
         };
         errdefer renderer.deinit();
 
-        try renderer.recreateDepthTarget();
+        try renderer.recreateDepthTarget(renderer.framebufferSize());
         return renderer;
     }
 
@@ -285,8 +285,7 @@ pub const Renderer = struct {
 
     pub fn endFrame(self: *Renderer) bool {
         const gctx = self.gctx orelse return false;
-        const framebuffer_size = self.framebufferSize();
-        if (framebuffer_size[0] == 0 or framebuffer_size[1] == 0) return true;
+        const framebuffer_size = self.syncSwapchainSize() orelse return true;
         self.ensureDepthTarget(framebuffer_size) catch |err| {
             std.log.err("failed to recreate depth target: {}", .{err});
             return false;
@@ -337,7 +336,10 @@ pub const Renderer = struct {
 
         gctx.submit(&.{commands});
         if (gctx.present() == .swap_chain_resized) {
-            self.recreateDepthTarget() catch |err| {
+            self.recreateDepthTarget(.{
+                gctx.swapchain_descriptor.width,
+                gctx.swapchain_descriptor.height,
+            }) catch |err| {
                 std.log.err("failed to recreate depth target after resize: {}", .{err});
                 return false;
             };
@@ -380,9 +382,8 @@ pub const Renderer = struct {
         return mesh;
     }
 
-    fn recreateDepthTarget(self: *Renderer) !void {
+    fn recreateDepthTarget(self: *Renderer, framebuffer_size: [2]u32) !void {
         const gctx = self.gctx.?;
-        const framebuffer_size = self.framebufferSize();
         if (framebuffer_size[0] == 0 or framebuffer_size[1] == 0) return;
 
         if (self.depth) |depth| depth.deinit(gctx);
@@ -411,7 +412,32 @@ pub const Renderer = struct {
         if (self.depth) |depth| {
             if (depth.width == framebuffer_size[0] and depth.height == framebuffer_size[1]) return;
         }
-        try self.recreateDepthTarget();
+        try self.recreateDepthTarget(framebuffer_size);
+    }
+
+    fn syncSwapchainSize(self: *Renderer) ?[2]u32 {
+        const gctx = self.gctx.?;
+        const framebuffer_size = self.framebufferSize();
+        if (framebuffer_size[0] == 0 or framebuffer_size[1] == 0) return null;
+
+        if (gctx.swapchain_descriptor.width != framebuffer_size[0] or
+            gctx.swapchain_descriptor.height != framebuffer_size[1])
+        {
+            gctx.swapchain_descriptor.width = framebuffer_size[0];
+            gctx.swapchain_descriptor.height = framebuffer_size[1];
+            gctx.swapchain.release();
+            gctx.swapchain = gctx.device.createSwapChain(gctx.surface, gctx.swapchain_descriptor);
+
+            std.log.info(
+                "resized swapchain to: {d}x{d}.",
+                .{ gctx.swapchain_descriptor.width, gctx.swapchain_descriptor.height },
+            );
+        }
+
+        return .{
+            gctx.swapchain_descriptor.width,
+            gctx.swapchain_descriptor.height,
+        };
     }
 
     fn framebufferSize(self: *Renderer) [2]u32 {
