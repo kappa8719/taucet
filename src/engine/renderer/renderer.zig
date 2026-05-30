@@ -91,6 +91,7 @@ pub const Renderer = struct {
     camera: ?CameraData = null,
     draw_commands: std.ArrayListUnmanaged(DrawCommand) = .empty,
     meshes: std.ArrayListUnmanaged(?GpuMesh) = .empty,
+    mesh_generations: std.ArrayListUnmanaged(u32) = .empty,
 
     mesh_bind_group_layout: zgpu.BindGroupLayoutHandle,
     mesh_pipeline: zgpu.RenderPipelineHandle,
@@ -191,6 +192,7 @@ pub const Renderer = struct {
                 if (mesh) |live_mesh| live_mesh.deinit(gctx);
             }
             self.meshes.deinit(self.allocator);
+            self.mesh_generations.deinit(self.allocator);
 
             if (self.depth) |depth| depth.deinit(gctx);
             self.depth = null;
@@ -201,6 +203,7 @@ pub const Renderer = struct {
             self.gctx = null;
         } else {
             self.meshes.deinit(self.allocator);
+            self.mesh_generations.deinit(self.allocator);
         }
     }
 
@@ -232,6 +235,23 @@ pub const Renderer = struct {
         gctx.queue.writeBuffer(gctx.lookupResource(vertex_buffer).?, 0, Vertex, desc.vertices);
         gctx.queue.writeBuffer(gctx.lookupResource(index_buffer).?, 0, u32, desc.indices);
 
+        for (self.meshes.items, 0..) |slot, i| {
+            if (slot == null) {
+                const generation = self.mesh_generations.items[i];
+                self.meshes.items[i] = .{
+                    .generation = generation,
+                    .vertex_buffer = vertex_buffer,
+                    .index_buffer = index_buffer,
+                    .vertex_count = @intCast(desc.vertices.len),
+                    .index_count = @intCast(desc.indices.len),
+                };
+                return .{ .index = @intCast(i), .generation = generation };
+            }
+        }
+
+        try self.mesh_generations.append(self.allocator, 1);
+        errdefer _ = self.mesh_generations.pop();
+
         const mesh = GpuMesh{
             .generation = 1,
             .vertex_buffer = vertex_buffer,
@@ -239,13 +259,6 @@ pub const Renderer = struct {
             .vertex_count = @intCast(desc.vertices.len),
             .index_count = @intCast(desc.indices.len),
         };
-
-        for (self.meshes.items, 0..) |slot, i| {
-            if (slot == null) {
-                self.meshes.items[i] = mesh;
-                return .{ .index = @intCast(i), .generation = mesh.generation };
-            }
-        }
 
         try self.meshes.append(self.allocator, mesh);
         return .{ .index = @intCast(self.meshes.items.len - 1), .generation = mesh.generation };
@@ -260,6 +273,7 @@ pub const Renderer = struct {
             if (mesh.generation != handle.generation) return;
             mesh.deinit(gctx);
             slot.* = null;
+            self.mesh_generations.items[handle.index] = nextMeshGeneration(mesh.generation);
         }
     }
 
@@ -408,6 +422,11 @@ pub const Renderer = struct {
         };
     }
 };
+
+fn nextMeshGeneration(generation: u32) u32 {
+    const next = generation +% 1;
+    return if (next == 0) 1 else next;
+}
 
 const mesh_shader_wgsl =
     \\struct DrawUniforms {
